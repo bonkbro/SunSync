@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=SunSync
+GenericName=Game Library Sync
+Comment=Import games from Lutris, Steam, Heroic and more into Sunshine
+Exec=sunsync-gui
+Icon=sunsync
+Terminal=false
+Categories=Game;Utility;
+Keywords=sunshine;moonlight;streaming;lutris;steam;heroic;
+StartupNotify=true

@@ -126,13 +126,51 @@ def _get_available_launchers() -> dict:
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _init_active_server() -> Optional[str]:
+    """Detect the installed/running backend and lock sunshine.py onto it.
+
+    The GUI used to assume Sunshine unconditionally, which left Apollo users
+    authenticating with the wrong method (Basic vs cookie) and reading the wrong
+    config root. This mirrors the CLI's server selection so both front-ends behave
+    the same. Best-effort: prefers a running server (Sunshine when both run, like
+    the CLI), otherwise falls back to an installed one. Returns the chosen server
+    name, or None when neither is installed (the GUI still opens so the user can
+    read the status bar and open Settings).
+    """
+    from sunshine.sunshine import (
+        detect_sunshine_installation, detect_apollo_installation,
+        get_running_servers, set_installation_type, set_server_name,
+    )
+    sunshine_installed, sunshine_install_type = detect_sunshine_installation()
+    apollo_installed = detect_apollo_installation()
+
+    running = get_running_servers()
+    if running:
+        server = "sunshine" if "sunshine" in running else running[0]
+    elif sunshine_installed:
+        server = "sunshine"
+    elif apollo_installed:
+        server = "apollo"
+    else:
+        return None
+
+    if server == "sunshine":
+        set_installation_type(sunshine_install_type or "native")
+    else:
+        set_installation_type("native")
+    set_server_name(server)
+    return server
+
+
 def _is_first_run() -> bool:
-    """True if no Sunshine connection has ever been saved by this tool."""
-    candidates = [
-        "~/.config/sunshine/server_connection.json",
-        "~/.var/app/dev.lizardbyte.app.Sunshine/config/sunshine/server_connection.json",
-    ]
-    return not any(Path(p).expanduser().exists() for p in candidates)
+    """True if no connection has ever been saved for the active backend.
+
+    Keyed on the active server so an Apollo user isn't re-prompted by a saved
+    Sunshine connection (and vice versa), and so the flatpak config root is
+    honoured instead of hard-coded paths.
+    """
+    from sunshine.sunshine import _load_api_connection_settings, SERVER_NAME
+    return SERVER_NAME not in _load_api_connection_settings()
 
 
 def _make_separator() -> QFrame:
@@ -322,11 +360,13 @@ class UpdateCoversWorker(QObject):
 class LoginDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Sunshine login")
+        from sunshine.sunshine import get_server_display_name
+        name = get_server_display_name()
+        self.setWindowTitle(f"{name} login")
         self.setMinimumWidth(360)
         layout = QVBoxLayout(self)
 
-        info = QLabel("Enter your Sunshine credentials.")
+        info = QLabel(f"Enter your {name} credentials.")
         info.setWordWrap(True)
         layout.addWidget(info)
 
@@ -365,7 +405,7 @@ class SettingsDialog(QDialog):
         conn_layout = QFormLayout(conn_group)
         from sunshine.sunshine import get_api_connection
         host, port = get_api_connection()
-        self.host_edit = QLineEdit(host)
+        self.host_edit = QLineEdit(host or "localhost")
         self.port_edit = QLineEdit(str(port))
         self.port_edit.setMaximumWidth(80)
         conn_layout.addRow("Host:", self.host_edit)
@@ -568,7 +608,9 @@ class SetupWizardDialog(QDialog):
         from sunshine.sunshine import get_api_connection
         host, port = get_api_connection()
         form = QFormLayout()
-        self.wiz_host = QLineEdit(host)
+        # Prefill the real default rather than leaning on the placeholder — an
+        # empty-looking field reads as "already set" and trips users up.
+        self.wiz_host = QLineEdit(host or "localhost")
         self.wiz_host.setPlaceholderText("localhost")
         self.wiz_port = QLineEdit(str(port))
         self.wiz_port.setMaximumWidth(90)
@@ -686,19 +728,22 @@ class SetupWizardDialog(QDialog):
     # -----------------------------------------------------------------------
 
     def _test_connection(self):
-        from sunshine.sunshine import set_api_connection, is_server_running
+        from sunshine.sunshine import (
+            set_api_connection, is_server_running, get_server_display_name,
+        )
         try:
             port = int(self.wiz_port.text().strip())
         except ValueError:
             self.wiz_conn_status.setText("✗  Invalid port number.")
             return
         set_api_connection(host=self.wiz_host.text().strip(), port=port)
-        if is_server_running("sunshine"):
-            self.wiz_conn_status.setText("✓  Sunshine is running and reachable.")
+        name = get_server_display_name()
+        if is_server_running():
+            self.wiz_conn_status.setText(f"✓  {name} is running and reachable.")
             self._conn_ok = True
         else:
             self.wiz_conn_status.setText(
-                "Could not reach Sunshine. Check the host and port above."
+                f"Could not reach {name}. Check the host and port above."
             )
 
     def _test_auth(self):
@@ -852,6 +897,7 @@ class MainWindow(QMainWindow):
         self._manage_thread: Optional[QThread] = None
         self._update_thread: Optional[QThread] = None
         self._launchers: dict = {}
+        self._server: Optional[str] = _init_active_server()
 
         self._setup_ui()
         self._detect_launchers()
@@ -1032,9 +1078,19 @@ class MainWindow(QMainWindow):
             self._op_label.setText("No launchers detected.")
 
     def _check_sunshine(self):
-        from sunshine.sunshine import is_server_running, ensure_authenticated
-        if not is_server_running("sunshine"):
-            self._sun_lbl.setText("⚠  Sunshine not running")
+        from sunshine.sunshine import (
+            is_server_running, ensure_authenticated, get_server_display_name,
+        )
+        # Re-detect on each check so a server started after launch is picked up,
+        # and the right backend (Sunshine/Apollo) stays locked in.
+        self._server = _init_active_server()
+        if self._server is None:
+            self._sun_lbl.setText("⚠  No Sunshine or Apollo installed")
+            self._sun_lbl.setStyleSheet("color: #cc7700; font-size: 11px;")
+            return
+        name = get_server_display_name()
+        if not is_server_running(self._server):
+            self._sun_lbl.setText(f"⚠  {name} not running")
             self._sun_lbl.setStyleSheet("color: #cc7700; font-size: 11px;")
             return
         if ensure_authenticated(allow_prompt=False):
@@ -1186,11 +1242,14 @@ class MainWindow(QMainWindow):
     # -----------------------------------------------------------------------
 
     def _add_selected(self):
-        from sunshine.sunshine import ensure_authenticated, is_server_running
+        from sunshine.sunshine import (
+            ensure_authenticated, is_server_running, get_server_display_name,
+        )
 
-        if not is_server_running("sunshine"):
-            QMessageBox.warning(self, "Sunshine not running",
-                                "Sunshine is not running. Start it and try again.")
+        name = get_server_display_name()
+        if not (self._server and is_server_running(self._server)):
+            QMessageBox.warning(self, f"{name} not running",
+                                f"{name} is not running. Start it and try again.")
             return
 
         if not ensure_authenticated(allow_prompt=False):
@@ -1250,9 +1309,12 @@ class MainWindow(QMainWindow):
         self._sunshine_apps = []
         self.upd_all_btn.setEnabled(False)
 
-        from sunshine.sunshine import is_server_running, ensure_authenticated
-        if not is_server_running("sunshine"):
-            self.manage_list.addItem(QListWidgetItem("⚠  Sunshine is not running."))
+        from sunshine.sunshine import (
+            is_server_running, ensure_authenticated, get_server_display_name,
+        )
+        if not (self._server and is_server_running(self._server)):
+            name = get_server_display_name()
+            self.manage_list.addItem(QListWidgetItem(f"⚠  {name} is not running."))
             return
         if not ensure_authenticated(allow_prompt=False):
             if not self._do_login():

@@ -79,7 +79,7 @@ python sunsync.py list       # list apps already in Sunshine
 python sunsync.py remove "Game Name"   # remove an app by name
 ```
 
-`--cover` downloads SteamGridDB art, `--sunshine-host`/`--sunshine-port` point at a non-default server.
+`--cover` downloads SteamGridDB art, `--sunshine-host`/`--sunshine-port` point at a non-default server, and `--version` prints the installed version.
 
 ## Virtual display
 

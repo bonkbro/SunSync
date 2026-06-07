@@ -103,7 +103,7 @@ capture = kwin
 output_name = Virtual-sunshine-vmon
 ```
 
-The scripts detect which physical outputs to turn off on their own, so they work the same on one monitor or several.
+The scripts detect which physical outputs to turn off on their own, so they work the same on one monitor or several. To override that, set environment variables on the start script: `SUNSYNC_VMON_KEEP_OUTPUTS` (space- or comma-separated output names to leave on, e.g. keep one screen for a second player) or `SUNSYNC_VMON_DISABLE_OUTPUTS` (disable exactly these, skipping auto-detect).
 
 ## Credentials & privacy
 

@@ -62,24 +62,50 @@ kscreen-doctor "output.${VMON}.priority.1"        2>/dev/null || true
 sleep 4
 
 # --- Power off the physical displays ------------------------------------------
-# Auto-detect every enabled + connected output (except the virtual one) so this
-# works on any machine, not just one with DP-1/DP-2. Record them for restore.
+# By default, auto-detect every enabled + connected output (except the virtual
+# one) so this works on any machine, not just one with DP-1/DP-2. Two optional
+# environment overrides (space- or comma-separated output names):
+#   SUNSYNC_VMON_DISABLE_OUTPUTS — disable exactly these, skipping auto-detect
+#   SUNSYNC_VMON_KEEP_OUTPUTS    — never disable these (e.g. keep one screen on)
+DISABLE_OVERRIDE="${SUNSYNC_VMON_DISABLE_OUTPUTS:-}"
+KEEP_OUTPUTS="${SUNSYNC_VMON_KEEP_OUTPUTS:-}"
+DISABLE_OVERRIDE="${DISABLE_OVERRIDE//,/ }"
+KEEP_OUTPUTS="${KEEP_OUTPUTS//,/ }"
+
+_is_kept() {
+    local target="$1" kept
+    # shellcheck disable=SC2086
+    for kept in $KEEP_OUTPUTS; do
+        [ "$kept" = "$target" ] && return 0
+    done
+    return 1
+}
+
+if [ -n "$DISABLE_OVERRIDE" ]; then
+    CANDIDATE_OUTPUTS="$DISABLE_OVERRIDE"
+else
+    CANDIDATE_OUTPUTS="$(
+        kscreen-doctor -o 2>/dev/null \
+            | sed 's/\x1b\[[0-9;]*m//g' \
+            | awk '
+                $1=="Output:"   { if (name && en && conn) print name; name=$3; en=0; conn=0; next }
+                $1=="enabled"   { en=1 }
+                $1=="connected" { conn=1 }
+                END             { if (name && en && conn) print name }
+            '
+    )"
+fi
+
+# Record disabled outputs so the stop script can restore exactly these.
 : > "$STATE_DIR/disabled-outputs"
-while IFS= read -r out; do
-    [ -n "$out" ] || continue
+# Word-splitting is intentional: output names never contain spaces.
+# shellcheck disable=SC2086
+for out in $CANDIDATE_OUTPUTS; do
     [ "$out" = "$VMON" ] && continue
+    _is_kept "$out" && continue
     echo "$out" >> "$STATE_DIR/disabled-outputs"
     kscreen-doctor "output.${out}.disable" 2>/dev/null || true
-done < <(
-    kscreen-doctor -o 2>/dev/null \
-        | sed 's/\x1b\[[0-9;]*m//g' \
-        | awk '
-            $1=="Output:"   { if (name && en && conn) print name; name=$3; en=0; conn=0; next }
-            $1=="enabled"   { en=1 }
-            $1=="connected" { conn=1 }
-            END             { if (name && en && conn) print name }
-        '
-)
+done
 
 sleep 0.5
 qdbus6 org.kde.KWin /KWin org.kde.KWin.minimizeAll 2>/dev/null || true

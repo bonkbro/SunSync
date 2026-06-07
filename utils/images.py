@@ -117,9 +117,8 @@ def prepare_sunshine_cover(src_path: Optional[str], game_name: str) -> Optional[
     try:
         os.makedirs(covers_dir, exist_ok=True)
         with Image.open(src_path) as img:
-            if img.mode not in ("RGB", "RGBA"):
-                img = img.convert("RGBA")
-            img.save(dest, "PNG", optimize=True)
+            out = img.convert("RGBA") if img.mode not in ("RGB", "RGBA") else img
+            out.save(dest, "PNG", optimize=True)
         return dest
     except Exception:
         return None

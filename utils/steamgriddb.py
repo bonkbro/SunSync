@@ -73,9 +73,8 @@ def download_image_from_steamgriddb(game_name: str, api_key: str) -> str:
         image_response.raise_for_status()
 
         image = Image.open(BytesIO(image_response.content))
-        if image.mode not in ("RGB", "RGBA"):
-            image = image.convert("RGBA")
-        image.save(image_path, "PNG", optimize=True)
+        out = image.convert("RGBA") if image.mode not in ("RGB", "RGBA") else image
+        out.save(image_path, "PNG", optimize=True)
 
         return image_path
 

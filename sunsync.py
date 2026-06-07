@@ -2,7 +2,7 @@ import os
 import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from importlib.metadata import PackageNotFoundError, version
-from typing import Tuple
+from typing import Optional, Tuple
 
 try:
     __version__ = version("sunsync")
@@ -18,6 +18,8 @@ from sunshine.sunshine import (
     get_api_url,
     get_covers_path,
     get_existing_apps,
+    get_existing_apps_full,
+    delete_app,
     get_running_servers,
     get_server_display_name,
     is_server_running,
@@ -113,6 +115,10 @@ def parse_args(argv=None):
     external_prep_subs.add_parser("clear", help="Remove external prep script configuration.")
     external_prep_subs.add_parser("status", help="Show current external prep script configuration.")
 
+    subparsers.add_parser("list", help="List apps configured in Sunshine/Apollo.")
+    remove_parser = subparsers.add_parser("remove", help="Remove an app by name.")
+    remove_parser.add_argument("name", help="Exact name of the app to remove.")
+
     return parser.parse_args(argv)
 
 
@@ -149,6 +155,76 @@ def handle_display_command(args) -> int:
 
     print(f"Unknown display action: {action}")
     return 1
+
+
+def prepare_server(args) -> Optional[str]:
+    """Detect, select and authenticate a running Sunshine/Apollo server.
+
+    Non-interactive server selection (defaults to Sunshine when both run) — the
+    management subcommands are quick one-shot operations, not the guided add
+    flow. Returns the chosen server name, or None if setup fails.
+    """
+    sunshine_installed, sunshine_install_type = detect_sunshine_installation()
+    apollo_installed = detect_apollo_installation()
+    if not sunshine_installed and not apollo_installed:
+        print("Error: No Sunshine or Apollo installation detected.")
+        return None
+
+    running = get_running_servers()
+    if not running:
+        print("Error: Sunshine or Apollo is not running. Please start it and try again.")
+        return None
+
+    server_name = "sunshine" if "sunshine" in running else running[0]
+    if server_name == "sunshine":
+        set_installation_type(sunshine_install_type)
+    else:
+        set_installation_type("native")
+
+    set_server_name(server_name)
+    if args.sunshine_host or args.sunshine_port is not None:
+        set_api_connection(host=args.sunshine_host or None, port=args.sunshine_port)
+
+    if not ensure_authenticated(allow_prompt=True):
+        print(f"Error: Could not authenticate with {get_server_display_name()}.")
+        return None
+    return server_name
+
+
+def _print_app_list() -> int:
+    apps = get_existing_apps_full()
+    if not apps:
+        print(f"No apps configured in {get_server_display_name()}.")
+        return 0
+    for app in sorted(apps, key=lambda a: str(a.get("name", "")).lower()):
+        print(f"{app.get('index')}: {app.get('name')}")
+    return 0
+
+
+def _remove_app_by_name(name: str) -> int:
+    apps = get_existing_apps_full()
+    matches = [a for a in apps if a.get("name") == name]
+    if not matches:
+        print(f"No app named '{name}' found in {get_server_display_name()}.")
+        return 1
+    ok, error = delete_app(matches[0]["index"])
+    if not ok:
+        print(f"Error removing '{name}': {error}")
+        return 1
+    print(f"Removed '{name}' from {get_server_display_name()}.")
+    return 0
+
+
+def handle_list_command(args) -> int:
+    if prepare_server(args) is None:
+        return 1
+    return _print_app_list()
+
+
+def handle_remove_command(args) -> int:
+    if prepare_server(args) is None:
+        return 1
+    return _remove_app_by_name(args.name)
 
 
 def main(argv=None):
@@ -205,6 +281,12 @@ def main(argv=None):
 
     if args.command == "display":
         raise SystemExit(handle_display_command(args))
+
+    if args.command == "list":
+        raise SystemExit(handle_list_command(args))
+
+    if args.command == "remove":
+        raise SystemExit(handle_remove_command(args))
 
     try:
         sunshine_installed, sunshine_install_type = detect_sunshine_installation()

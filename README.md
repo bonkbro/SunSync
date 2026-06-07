@@ -75,6 +75,8 @@ The CLI does the same thing without a window:
 ```bash
 python sunsync.py            # interactive
 python sunsync.py --all      # add everything
+python sunsync.py list       # list apps already in Sunshine
+python sunsync.py remove "Game Name"   # remove an app by name
 ```
 
 `--cover` downloads SteamGridDB art, `--sunshine-host`/`--sunshine-port` point at a non-default server.

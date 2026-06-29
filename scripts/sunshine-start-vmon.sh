@@ -24,7 +24,7 @@ VMON="Virtual-${NAME}"
 # --- Resolution / fps from the Moonlight client (with sane fallbacks) ---------
 WIDTH="${SUNSHINE_CLIENT_WIDTH:-1920}"
 HEIGHT="${SUNSHINE_CLIENT_HEIGHT:-1080}"
-FPS="${SUNSHINE_CLIENT_FPS%.*}"; FPS="${FPS:-60}"
+FPS="${SUNSHINE_CLIENT_FPS:-60}"; FPS="${FPS%.*}"
 FPS_MHZ=$(( FPS * 1000 ))
 RES="${WIDTH}x${HEIGHT}"
 

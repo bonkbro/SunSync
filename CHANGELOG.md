@@ -5,6 +5,13 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2026-06-30
+
+### Fixed
+- Virtual monitor start script now correctly floors decimal FPS values from
+  `SUNSHINE_CLIENT_FPS` before arithmetic, preventing a syntax error when the
+  client reports a non-integer frame rate (e.g. `59.94`). Thanks @Klbgr.
+
 ## [0.2.1] - 2026-06-07
 
 ### Fixed
@@ -39,6 +46,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release.
 
+[0.2.2]: https://github.com/OscarTienda/SunSync/releases/tag/v0.2.2
 [0.2.1]: https://github.com/OscarTienda/SunSync/releases/tag/v0.2.1
 [0.2.0]: https://github.com/OscarTienda/SunSync/releases/tag/v0.2.0
 [0.1.0]: https://github.com/OscarTienda/SunSync/releases/tag/v0.1.0

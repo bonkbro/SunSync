@@ -10,7 +10,26 @@
 # Sunshine exports SUNSHINE_CLIENT_WIDTH / _HEIGHT / _FPS into this environment.
 # Requires: krfb-virtualmonitor (krfb), kscreen-doctor (libkscreen), qdbus6.
 #
+# Override the resolution and frame rate with CLI args:
+#     ./sunshine-start-vmon.sh [--width W] [--height H] [--fps F]
 set -u
+
+# --- Parse CLI overrides (highest priority) ---------------------------------
+OVERRIDE_WIDTH=""
+OVERRIDE_HEIGHT=""
+OVERRIDE_FPS=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --width)
+            OVERRIDE_WIDTH="$2"; shift 2;;
+        --height)
+            OVERRIDE_HEIGHT="$2"; shift 2;;
+        --fps)
+            OVERRIDE_FPS="$2"; shift 2;;
+        *)
+            break;;
+    esac
+done
 
 # --- Wayland / D-Bus session environment (Sunshine's service env is minimal) --
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
@@ -22,9 +41,10 @@ NAME="sunshine-vmon"
 VMON="Virtual-${NAME}"
 
 # --- Resolution / fps from the Moonlight client (with sane fallbacks) ---------
-WIDTH="${SUNSHINE_CLIENT_WIDTH:-1920}"
-HEIGHT="${SUNSHINE_CLIENT_HEIGHT:-1080}"
-FPS="${SUNSHINE_CLIENT_FPS:-60}"; FPS="${FPS%.*}"
+# Priority: OVERRIDE_*  > SUNSHINE_CLIENT_* > defaults
+WIDTH="${OVERRIDE_WIDTH:-${SUNSHINE_CLIENT_WIDTH:-1920}}"
+HEIGHT="${OVERRIDE_HEIGHT:-${SUNSHINE_CLIENT_HEIGHT:-1080}}"
+FPS="${OVERRIDE_FPS:-${SUNSHINE_CLIENT_FPS:-60}}"; FPS="${FPS%.*}"
 FPS_MHZ=$(( FPS * 1000 ))
 RES="${WIDTH}x${HEIGHT}"
 
